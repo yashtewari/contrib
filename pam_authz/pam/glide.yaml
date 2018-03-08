@@ -1,0 +1,7 @@
+package: github.com/open-policy-agent/contrib/pam_authz/pam
+import:
+  - package: github.com/golang/glog
+  - package: github.com/pkg/errors
+  - package: golang.org/x/crypto/ssh
+  - package: golang.org/x/crypto/ssh/agent
+  - package: github.com/stretchr/testify/require
