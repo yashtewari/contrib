@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+#include <stdio.h>
+
 struct pam_conv *get_pam_conv(pam_handle_t *pamh) {
 	
 	if (!pamh)
@@ -20,33 +23,44 @@ char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message) {
 	// see https://linux.die.net/man/3/pam_conv
 	int num_msg = 1;
 
+	fprintf(stderr, "%s\n", "sahi");
+
 	// Create a struct pam_message array and populate it with a single object.
 	// struct pam_message **msg = (struct pam_message**) malloc(sizeof(struct pam_message));
 	// msg[0] = (struct pam_message*) malloc(sizeof(struct pam_message));
 	// msg[0]->msg_style = msg_style;
 	// msg[0]->msg = message;
 
-	struct pam_message msg_array[1];
+	struct pam_message *msg_array = (struct pam_message *)(malloc(sizeof(struct pam_message)));
 	msg_array[0].msg_style = msg_style;
 	msg_array[0].msg = message;
+
+	fprintf(stderr, "%s\n", "hai");
 
 	// Create a struct pam_response array.
 	struct pam_response *resp_array = NULL;
 
 	struct pam_conv *obj = get_pam_conv(pamh);
 	if (obj == NULL)
-	return NULL;
+		return NULL;
+
+	fprintf(stderr, "%s\n", "got the thing");
 
 	if (obj->conv(num_msg, (const struct pam_message **)&msg_array, &resp_array, obj->appdata_ptr) != PAM_SUCCESS)
-	return NULL;
+		return NULL;
+
+	fprintf(stderr, "%s\n", "called the thing");
 
 	char *resp = NULL;
 	if (resp_array[0].resp != NULL) {
-	resp = strdup(resp_array[0].resp);
-	free((resp_array[0].resp));
+		resp = strdup(resp_array[0].resp);
+		free((resp_array[0].resp));
 	}
 
+	fprintf(stderr, "%s\n", "boss");
+
 	free(resp_array);
+	free(msg_array);
 	// free(msg[0]);
 	// free(msg);
 

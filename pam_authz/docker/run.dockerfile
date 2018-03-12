@@ -13,6 +13,8 @@ RUN /etc/my_init.d/00_regen_ssh_host_keys.sh
 
 RUN apt-get update && apt-get install -y \
     vim \
+    net-tools \
+    strace \
     sudo && \
     rm -rf /var/lib/apt/lists/*
 

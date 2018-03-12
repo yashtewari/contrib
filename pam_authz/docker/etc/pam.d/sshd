@@ -2,7 +2,7 @@
 
 # Enable the Authz PAM module
 # At image build time, the value of HOST_UUID is replaced with the role of the image (for example, webapp)
-account required /lib/security/pam_authz.so url=http://opa:8181 policy_path=/v1/data/ssh/authz group=admin
+auth required /lib/security/pam_authz.so url=http://opa:8181 authz_rule_endpoint=/v1/data/common/authz display_rule_endpoint=/v1/data/common/display pull_rule_endpoint=/v1/data/common/pull
 
 # SELinux needs to be the first session rule.  This ensures that any
 # lingering context has been cleared.  Without this it is possible that a
@@ -10,7 +10,7 @@ account required /lib/security/pam_authz.so url=http://opa:8181 policy_path=/v1/
 session [success=ok ignore=ignore module_unknown=ignore default=bad]        pam_selinux.so close
 
 # Set the loginuid process attribute.
-session    required     pam_loginuid.so
+session    sufficient     pam_loginuid.so
 
 # Create a new session keyring.
 session    optional     pam_keyinit.so force revoke
@@ -43,4 +43,4 @@ session    required     pam_env.so user_readenv=1 envfile=/etc/default/locale
 session [success=ok ignore=ignore module_unknown=ignore default=bad]        pam_selinux.so open
 
 # Standard Un*x password updating.
-@include common-password
+# @include common-password

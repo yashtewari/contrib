@@ -1,34 +1,11 @@
 // +build darwin linux
 
-/*
-Copyright (c) 2017 Uber Technologies, Inc.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-*/
-
 package main
 
-// code in here can't be tested because it relies on cgo. :(
-
 import (
-	"os"
 	"unsafe"
+
+	"github.com/open-policy-agent/contrib/pam_authz/pam/engine"
 )
 
 /*
@@ -36,69 +13,141 @@ import (
 #include <security/pam_appl.h>
 #include <stdlib.h>
 
-char *string_from_argv(int, char**);
-char *get_user(pam_handle_t *pamh);
-int get_uid(char *user);
+// disable_ptrace attempts to turn tracing off;
+// core dumps cannot be produced.
+int disable_ptrace();
+
+// string_from_argv copies the string at argv index i into
+// a new memory block and returns a pointer to it.
+//
+// The returned value must be freed by the caller.
+char *string_from_argv(int i, char **argv);
+
+
+
+
+char *get_pam_item_string2(pam_handle_t *pamh, int item_type);
+
 */
 import "C"
 
+// REMOVE THIS GARBAGE
+import (
+	"fmt"
+	// "time"
+)
+
 func init() {
-	if !disablePtrace() {
-		pamLog("unable to disable ptrace")
-	}
+	// Try to disable ptrace.
+	// if C.disable_ptrace() != C.int(0) {
+	// 	log(logLevelError, "unable to disable ptrace")
+	// }
 }
 
+// sliceFromArgv returns a slice constructed from C-style argc, argv.
 func sliceFromArgv(argc C.int, argv **C.char) []string {
 	r := make([]string, 0, argc)
 	for i := 0; i < int(argc); i++ {
 		s := C.string_from_argv(C.int(i), argv)
 		defer C.free(unsafe.Pointer(s))
+
 		r = append(r, C.GoString(s))
 	}
 	return r
 }
 
+// pam_sm_authenticate is the PAM modeule's authenticate function, called by a PAM application.
 //export pam_sm_authenticate
 func pam_sm_authenticate(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	cUsername := C.get_user(pamh)
-	if cUsername == nil {
-		return C.PAM_USER_UNKNOWN
-	}
-	defer C.free(unsafe.Pointer(cUsername))
 
-	uid := int(C.get_uid(cUsername))
-	if uid < 0 {
-		return C.PAM_USER_UNKNOWN
+	log(logLevelError, "pam_sm_authenticate called")
+	// return C.PAM_SUCCESS
+	// _, err := http.Get("https://www.google.com")
+	// log(logLevelError, "HTTP IN PAM HUA %+v", err)
+
+	item := C.get_pam_item_string2((*C.pam_handle_t)(pamh), C.PAM_SERVICE)
+	if item != nil {
+		defer C.free(unsafe.Pointer(item))
+	}
+	itemSTR := C.GoString(item)
+	log(logLevelError, "ITEM %s", itemSTR)
+	// if itemSTR != "sudo" {
+	// 	time.Sleep(20 * time.Second)
+	// }
+
+	//
+	//
+	//
+	// ABOVE IS BS
+
+	initialize(sliceFromArgv(argc, argv))
+
+	fmt.Println("WHO")
+	eng := engine.New(
+		policyEngineURL,
+		displayEndpoint,
+		pullEndpoint,
+		authzEndpoint,
+	)
+
+	log(logLevelError, "fetching display policy")
+	display, errs := eng.Display(unsafe.Pointer(pamh))
+	if len(errs) > 0 {
+		for _, e := range errs {
+			log(logLevelError, e.Error())
+		}
 	}
 
-	r := pamAuthorize(os.Stderr, uid, C.GoString(cUsername), sliceFromArgv(argc, argv))
-	if r == AuthError {
-		return C.PAM_AUTH_ERR
+	log(logLevelError, "fetching pull policy")
+	pull, errs := eng.Pull(unsafe.Pointer(pamh))
+	if len(errs) > 0 {
+		for _, e := range errs {
+			log(logLevelError, e.Error())
+		}
 	}
-	return C.PAM_SUCCESS
+
+	fmt.Println("LET")
+
+	log(logLevelError, "fetching authz policy")
+	authz, err := eng.Authorize(engine.NewAuthzPolicyInput(display, pull))
+	if err != nil {
+		log(logLevelError, err.Error())
+	}
+
+	return C.int(authz)
+
 }
 
+// pam_sm_acct_mgmt is the PAM module's authorization function, called by a PAM application.
 //export pam_sm_acct_mgmt
 func pam_sm_acct_mgmt(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	cUsername := C.get_user(pamh)
-	if cUsername == nil {
-		return C.PAM_USER_UNKNOWN
-	}
-	defer C.free(unsafe.Pointer(cUsername))
+	log(logLevelInfo, "pam_sm_acct_mgmt called")
 
-	uid := int(C.get_uid(cUsername))
-	if uid < 0 {
-		return C.PAM_USER_UNKNOWN
-	}
+	// Currently this module performs the same operation for both
+	// authn (PAM: auth) and authz (PAM: account) calls.
+	// pam_sm_authenticate(pamh, flags, argc, argv)
+	return pam_sm_authenticate(pamh, flags, argc, argv)
 
-	r := pamAuthorize(os.Stderr, uid, C.GoString(cUsername), sliceFromArgv(argc, argv))
-	if r == AuthError {
-		return C.PAM_AUTH_ERR
-	}
+	// return C.PAM_SUCCESS
+}
+
+// pam_sm_setcred is
+//export pam_sm_setcred
+func pam_sm_setcred(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
+	log(logLevelInfo, "pam_sm_setcred called")
+
 	return C.PAM_SUCCESS
 }
 
-//export pam_sm_setcred
-func pam_sm_setcred(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	return C.PAM_IGNORE
+//export pam_sm_open_session
+func pam_sm_open_session(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
+	log(logLevelInfo, "pam_sm_open_session called")
+	return C.PAM_SUCCESS
+}
+
+//export pam_sm_close_session
+func pam_sm_close_session(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
+	log(logLevelInfo, "pam_sm_close_session called")
+
+	return C.PAM_SUCCESS
 }
