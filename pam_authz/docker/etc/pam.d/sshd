@@ -4,6 +4,8 @@
 # At image build time, the value of HOST_UUID is replaced with the role of the image (for example, webapp)
 auth required /lib/security/pam_authz.so url=http://opa:8181 authz_rule_endpoint=/v1/data/common/authz display_rule_endpoint=/v1/data/common/display pull_rule_endpoint=/v1/data/common/pull
 
+account required /lib/security/pam_authz.so
+
 # SELinux needs to be the first session rule.  This ensures that any
 # lingering context has been cleared.  Without this it is possible that a
 # module could execute code in the wrong domain.

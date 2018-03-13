@@ -35,6 +35,7 @@ import "C"
 import (
 	"fmt"
 	// "time"
+	"net/http"
 )
 
 func init() {
@@ -42,6 +43,8 @@ func init() {
 	// if C.disable_ptrace() != C.int(0) {
 	// 	log(logLevelError, "unable to disable ptrace")
 	// }
+	_, _ = http.Get("http://opa:8181/v1/data/common/display")
+	log(logLevelError, "YESS!")
 }
 
 // sliceFromArgv returns a slice constructed from C-style argc, argv.
@@ -91,67 +94,62 @@ func pam_sm_authenticate(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char)
 	)
 
 	log(logLevelError, "fetching display policy")
-	display, errs := eng.Display(unsafe.Pointer(pamh))
+	_, errs := eng.Display(unsafe.Pointer(pamh))
 	if len(errs) > 0 {
 		for _, e := range errs {
 			log(logLevelError, e.Error())
 		}
 	}
 
-	log(logLevelError, "fetching pull policy")
-	pull, errs := eng.Pull(unsafe.Pointer(pamh))
-	if len(errs) > 0 {
-		for _, e := range errs {
-			log(logLevelError, e.Error())
-		}
-	}
+	// log(logLevelError, "fetching pull policy")
+	// pull, errs := eng.Pull(unsafe.Pointer(pamh))
+	// if len(errs) > 0 {	// 	for _, e := range errs {
+	// 		log(logLevelError, e.Error())
+	// 	}
+	// }
 
-	fmt.Println("LET")
+	// fmt.Println("LET")
 
-	log(logLevelError, "fetching authz policy")
-	authz, err := eng.Authorize(engine.NewAuthzPolicyInput(display, pull))
-	if err != nil {
-		log(logLevelError, err.Error())
-	}
+	// log(logLevelError, "fetching authz policy")
+	// authz, err := eng.Authorize(engine.NewAuthzPolicyInput(display, pull))
+	// if err != nil {
+	// 	log(logLevelError, err.Error())
+	// }
 
-	return C.int(authz)
+	// return C.int(authz)
 
 	// fmt.Println(display)
 
-	// return C.PAM_SUCCESS
+	return C.PAM_SUCCESS
 
 }
 
 // pam_sm_acct_mgmt is the PAM module's authorization function, called by a PAM application.
 //export pam_sm_acct_mgmt
 func pam_sm_acct_mgmt(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	log(logLevelInfo, "pam_sm_acct_mgmt called")
-
-	// Currently this module performs the same operation for both
-	// authn (PAM: auth) and authz (PAM: account) calls.
-	// pam_sm_authenticate(pamh, flags, argc, argv)
-	return pam_sm_authenticate(pamh, flags, argc, argv)
-
-	// return C.PAM_SUCCESS
+	initialize(sliceFromArgv(argc, argv))
+	log(logLevelError, "pam_sm_acct_mgmt called")
+	return C.PAM_SUCCESS
 }
 
 // pam_sm_setcred is
 //export pam_sm_setcred
 func pam_sm_setcred(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	log(logLevelInfo, "pam_sm_setcred called")
+	initialize(sliceFromArgv(argc, argv))
+	log(logLevelError, "pam_sm_setcred called")
 
 	return C.PAM_SUCCESS
 }
 
 //export pam_sm_open_session
 func pam_sm_open_session(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	log(logLevelInfo, "pam_sm_open_session called")
+	initialize(sliceFromArgv(argc, argv))
+	log(logLevelError, "pam_sm_open_session called")
 	return C.PAM_SUCCESS
 }
 
 //export pam_sm_close_session
 func pam_sm_close_session(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char) C.int {
-	log(logLevelInfo, "pam_sm_close_session called")
-
+	log(logLevelError, "pam_sm_close_session called")
 	return C.PAM_SUCCESS
 }
