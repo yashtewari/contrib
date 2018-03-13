@@ -79,15 +79,15 @@ func (e Engine) Display(pamh unsafe.Pointer) (DisplayResponses, []error) {
 	// _, err := http.Get("https://www.google.com")
 	// log(logLevelError, "HTTP OUT PAM HUA %+v", err)
 
-	item := C.get_pam_item_string((*C.pam_handle_t)(pamh), C.PAM_SERVICE)
-	if item != nil {
-		defer C.free(unsafe.Pointer(item))
-	}
-	itemSTR := C.GoString(item)
-	log(logLevelError, "ITEM %s", itemSTR)
-	if itemSTR == "sshd" {
-		// panic("see this?")
-	}
+	// item := C.get_pam_item_string((*C.pam_handle_t)(pamh), C.PAM_SERVICE)
+	// if item != nil {
+	// 	defer C.free(unsafe.Pointer(item))
+	// }
+	// itemSTR := C.GoString(item)
+	// log(logLevelError, "ITEM %s", itemSTR)
+	// if itemSTR == "sshd" {
+	// 	// panic("see this?")
+	// }
 
 	errs := []error{}
 
@@ -119,6 +119,14 @@ func (e Engine) Display(pamh unsafe.Pointer) (DisplayResponses, []error) {
 		return nil, errs
 	}
 	log(logLevelError, "4")
+
+	// TRYING PURELY WITH PROMPTS
+	// engresp.Result = DisplayPolicyResult{
+	// 	[]DisplayItem{
+	// 		DisplayItem{"name:", DisplayStylePromptEchoOn, "name"},
+	// 		DisplayItem{"secret:", DisplayStylePromptEchoOff, "secret"},
+	// 	},
+	// }
 
 	// Display messages to the user as directed by policy engine.
 	dresp := DisplayResponses{}

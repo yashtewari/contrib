@@ -3,4 +3,4 @@ ChallengeResponseAuthentication yes
 UsePAM yes
 PasswordAuthentication no
 AuthenticationMethods publickey,keyboard-interactive
-KbdInteractiveAuthentication yes
+# KbdInteractiveAuthentication yes

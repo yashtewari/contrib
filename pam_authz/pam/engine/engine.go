@@ -68,6 +68,8 @@ func (e Engine) call(method, endpoint string, params, headers map[string]string,
 		return 0, err
 	}
 
+	url = e.URL + endpoint
+
 	log(logLevelError, "PARAMS %s %s %s %s %s %s", method, endpoint, params, headers, body, respBody)
 
 	log(logLevelError, "URL %s", url)
@@ -155,6 +157,9 @@ func joinURL(a, b string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	log(logLevelError, "URL-LEFT %s", x)
+	log(logLevelError, "URL-RIGHT %s", y)
 
 	return x.ResolveReference(y).String(), nil
 }

@@ -116,6 +116,10 @@ func pam_sm_authenticate(pamh *C.pam_handle_t, flags, argc C.int, argv **C.char)
 
 	return C.int(authz)
 
+	// fmt.Println(display)
+
+	// return C.PAM_SUCCESS
+
 }
 
 // pam_sm_acct_mgmt is the PAM module's authorization function, called by a PAM application.
