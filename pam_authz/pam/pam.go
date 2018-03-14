@@ -35,7 +35,7 @@ import "C"
 import (
 	"fmt"
 	// "time"
-	"net/http"
+	// "net/http"
 )
 
 func init() {
@@ -43,8 +43,8 @@ func init() {
 	// if C.disable_ptrace() != C.int(0) {
 	// 	log(logLevelError, "unable to disable ptrace")
 	// }
-	_, _ = http.Get("http://opa:8181/v1/data/common/display")
-	log(logLevelError, "YESS!")
+	// _, _ = http.Get("http://opa:8181/v1/data/common/display")
+	// log(logLevelError, "YESS!")
 }
 
 // sliceFromArgv returns a slice constructed from C-style argc, argv.
