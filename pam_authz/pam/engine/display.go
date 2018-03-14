@@ -22,7 +22,7 @@ char *get_pam_item_string(pam_handle_t *pamh, int item_type);
 */
 import "C"
 import (
-	// "net/http"
+	"net/http"
 	// "runtime"
 	"unsafe"
 
@@ -110,26 +110,26 @@ func (e Engine) Display(pamh unsafe.Pointer) (DisplayResponses, []error) {
 	}
 	log(logLevelError, "2")
 
-	// status, err := e.call(http.MethodGet, e.DisplayEndpoint, nil, nil, nil, &engresp)
-	// if err != nil {
-	// 	errs = append(errs, errors.Wrapf(err, "error calling policy engine %s endpoint %s", e.URL, e.DisplayEndpoint))
-	// 	return nil, errs
-	// }
-	// log(logLevelError, "3")
+	status, err := e.call(http.MethodGet, e.DisplayEndpoint, nil, nil, nil, &engresp)
+	if err != nil {
+		errs = append(errs, errors.Wrapf(err, "error calling policy engine %s endpoint %s", e.URL, e.DisplayEndpoint))
+		return nil, errs
+	}
+	log(logLevelError, "3")
 
-	// if status != http.StatusOK {
-	// 	errs = append(errs, errors.Errorf("unexpected response status %d from policy engine %s endpoint %s", status, e.URL, e.DisplayEndpoint))
-	// 	return nil, errs
-	// }
-	// log(logLevelError, "4")
+	if status != http.StatusOK {
+		errs = append(errs, errors.Errorf("unexpected response status %d from policy engine %s endpoint %s", status, e.URL, e.DisplayEndpoint))
+		return nil, errs
+	}
+	log(logLevelError, "4")
 
 	// TRYING PURELY WITH PROMPTS
-	engresp.Result = DisplayPolicyResult{
-		[]DisplayItem{
-			DisplayItem{"name:", DisplayStylePromptEchoOn, "name"},
-			DisplayItem{"secret:", DisplayStylePromptEchoOff, "secret"},
-		},
-	}
+	// engresp.Result = DisplayPolicyResult{
+	// 	[]DisplayItem{
+	// 		DisplayItem{"name:", DisplayStylePromptEchoOn, "name"},
+	// 		DisplayItem{"secret:", DisplayStylePromptEchoOff, "secret"},
+	// 	},
+	// }
 
 	// Display messages to the user as directed by policy engine.
 	dresp := DisplayResponses{}
