@@ -1,11 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
 
+#include <curl/curl.h>
+
 
 char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message);
+// int get_url(const char* url_ptr);
 
 
 // PAM FUNCTIONS
@@ -17,6 +21,12 @@ PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, cons
 		free(secret_ptr);
 
 	return PAM_SUCCESS;
+
+	// printf(">>>> Preparing to make HTTP call.");
+	// int http_resp_code = get_url("http://opa:8181");
+	// printf(">>>> HTTP call has completed with code %d", http_resp_code);
+
+	// return PAM_SUCCESS;
 }
 
 PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv) {
@@ -120,4 +130,34 @@ char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message) {
 	// free(msg);
 
 	return resp;
+}
+
+static int get_url(const char* url_ptr) {
+	// printf("Start stuff\n");
+
+	CURL* curl_handle = curl_easy_init();
+
+	if (!curl_handle) {
+		return 0;
+	}
+
+	// TEST-start
+	curl_easy_cleanup(curl_handle);
+	// TEST-end
+
+	// curl_easy_setopt(curl_handle, CURLOPT_URL, url_ptr);
+	// curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1); // we don't care about progress
+	// curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
+	// // we don't want to leave our user waiting at the login prompt forever
+	// curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 1);
+
+	// // synchronous, but we don't really care
+	int http_resp_code = -1;
+	// http_resp_code = curl_easy_perform(curl_handle);
+
+	// curl_easy_cleanup(curl_handle);
+
+	// printf(">>>> Response received from HTTP call: %d\n", http_resp_code);
+
+	return http_resp_code;
 }

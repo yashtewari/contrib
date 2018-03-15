@@ -1,7 +1,9 @@
 FROM golang:1.8
 
-RUN apt-get update && apt-get install -y \
-    libpam0g-dev && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpam0g-dev \
+    apt-utils \
+    libcurl4-openssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY pam /pam
