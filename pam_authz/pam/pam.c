@@ -7,29 +7,28 @@
 
 #include <curl/curl.h>
 
-
 #include <jansson.h>
 
 char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message);
 static int get_url(const char* url_ptr);
 int do_display(pam_handle_t *pamh, char *url);
+int do_authz(const char *url);
 
+
+// struct display_response holds the input entered by the user for a prompt,
+// along with the key associated with that prompt.
+struct display_response {
+	char *key;
+	char *input;
+};
 
 // PAM FUNCTIONS
 
 PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, const char **argv ) {
-	fprintf(stderr, ">>>> Preparing to do the displayt thing.\n");
 	int http_resp_code = do_display(pamh, "http://opa:8181/v1/data/common/display");
-	fprintf(stderr, ">>>> The display thing is done.\n");
+	
 
-	// char* secret_ptr = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, "What be thine secret? ");
-
-	// if (secret_ptr != NULL)
-	// 	free(secret_ptr);
-
-	// return PAM_SUCCESS;
-
-	return PAM_SUCCESS;
+	return do_authz("http://opa:8181/v1/data/common/authz");
 }
 
 PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv) {
@@ -39,36 +38,6 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
 PAM_EXTERN int pam_sm_setcred( pam_handle_t *pamh, int flags, int argc, const char **argv ) {
 	return PAM_SUCCESS;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 char GET[] = "GET";
@@ -173,6 +142,65 @@ size_t curl_callback (void *contents, size_t size, size_t nmemb, void *userp) {
     return realsize;
 }
 
+static int http_request(const char * method, const char* url, char *req_body, char **resp_body) {
+	CURL* curl_handle = curl_easy_init();
+
+	if (!curl_handle) {
+		return 0;
+	}
+
+	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+	curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, method);
+	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1);
+	curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
+	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5); // Set a 5 second timeout.
+
+	// Set up the data object which will be populated by the callback.
+	struct curl_fetch_st resp_data;
+	resp_data.payload = (char *) malloc(1); // This will be realloced by libcurl.
+	resp_data.size = 0;                     // Start with an empty payload.
+
+	// Set headers.
+	struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json"); // The request body is JSON.
+	headers = curl_slist_append(headers, "Accept: application/json");       // The response body can be JSON.
+
+	// Set the request body JSON.
+	// This has the side effect of setting request headers to default, undesired values.
+	// Ensure that proper headers are set afterwards.
+	if (req_body != NULL) {
+		curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, req_body);
+	}
+
+	// Specify that the data should be written to our object.
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&resp_data);
+
+	// Specify that our callback should be used to write the data.
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_callback);
+
+	// Perform a synchronous request.
+	CURLcode resp_code = curl_easy_perform(curl_handle);
+	if (resp_code != CURLE_OK) {
+		fprintf(stderr, "HTTP request failed: %s\n", curl_easy_strerror(resp_code));
+	}
+
+	// Clean up request objects.
+	if (req_body != NULL) { // Caller expects req_body to be freed.
+		free(req_body);
+	}
+	curl_easy_cleanup(curl_handle); // Clean up curl objects.
+	curl_slist_free_all(headers);	// Clean up headers.
+
+	fprintf(stderr, ">>>> Response received from HTTP call: %d\n", resp_code);
+	fprintf(stderr, ">>>> Data received from HTTP call: %s\n", resp_data.payload);
+
+	if (resp_body != NULL) {
+		*resp_body = resp_data.payload;
+	}
+
+	return resp_code;
+}
+
 static int json_error_ret(json_t *json_root, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -180,65 +208,15 @@ static int json_error_ret(json_t *json_root, const char *fmt, ...) {
     // Publish to standard error.
     vfprintf(stderr, fmt, args);
 
-    // Close the root JSON object.
+    // Free up JSON object memory.
 	json_decref(json_root);
 
 	return 1;
 }
 
-static int http_request(const char * method, const char* url, char **resp_body) {
-	CURL* curl_handle = curl_easy_init();
-
-	if (!curl_handle) {
-		return 0;
-	}
-
-	// TEST-start
-	// curl_easy_cleanup(curl_handle);
-	// TEST-end
-
-	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-	curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, GET);
-	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1); // we don't care about progress
-	curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
-	// we don't want to leave our user waiting at the login prompt forever
-	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 1);
-
-	// Set headers.
-    headers = curl_slist_append(headers, "Content-Type: application/json"); // The request body is JSON.
-	headers = curl_slist_append(headers, "Accept: application/json");       // The response body can be JSON.
-
-	// Set up the data object which will be populated by the callback.
-	struct curl_fetch_st resp_data;
-	resp_data.payload = (char *) malloc(1);
-	resp_data.size = 0;
-
-	// Tell the handle to use the data object.
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&resp_data);
-
-	// Tell the handle to use our callback.
-	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_callback);
-
-	// synchronous, but we don't really care
-	CURLcode resp_code = curl_easy_perform(curl_handle);
-	if (resp_code != CURLE_OK) {
-		fprintf(stderr, "HTTP request failed: %s\n", curl_easy_strerror(resp_code));
-	}
-
-	curl_easy_cleanup(curl_handle);
-
-	fprintf(stderr, ">>>> Response received from HTTP call: %d\n", resp_code);
-	fprintf(stderr, ">>>> Data received from HTTP call: %s\n", resp_data.payload);
-
-	*resp_body = resp_data.payload;
-
-	return resp_code;
-}
-
 int do_display(pam_handle_t *pamh, char *url) {
-
 	char *resp_body;
-	http_request(GET, url, &resp_body);
+	http_request(GET, url, NULL, &resp_body);
 
 
 	// Define object to store JSON errors in.
@@ -293,10 +271,41 @@ int do_display(pam_handle_t *pamh, char *url) {
 			}
 		}
 
-		fprintf(stderr, ">>>> Received message %s of type %d and key %s\n", json_string_value(message), json_string_value(style), json_string_value(key));
+		fprintf(stderr, ">>>> Received message %s of type %s and key %s\n", json_string_value(message), json_string_value(style), json_string_value(key));
 		char* user_resp = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, (char *)json_string_value(message));
 		fprintf(stderr, ">>>> User response received: %s\n", user_resp);
 	}
 
+	json_decref(root); // Clean up.
+
 	return 0;
+}
+
+int do_authz(const char *url) {
+	json_t *req_body = json_object(), *input = json_object(), *display_responses = json_object();
+
+	if (!json_object_set_new(display_responses, "user", json_string("yash"))) {
+		fprintf(stderr, "%s\n", "could not set display_responses 'user' to 'yash'");
+	}
+
+	if (!json_object_set_new(display_responses, "secret", json_string("42"))) {
+		fprintf(stderr, "%s\n", "could not set display_responses 'secret' to '42'");
+	}
+
+	if (!json_object_set_new(input, "display_responses", display_responses)) {
+		fprintf(stderr, "%s\n", "could not set input 'display_responses'");
+	}
+
+	if (!json_object_set_new(req_body, "input", input)) {
+		fprintf(stderr, "%s\n", "could not set req_body 'input'");
+	}
+
+	fprintf(stderr, ">>>> Sending JSON request%s\n", json_dumps(req_body, JSON_COMPACT));
+
+	char *resp_body;
+	http_request(POST, url, json_dumps(req_body, JSON_COMPACT), &resp_body);
+
+	fprintf(stderr, ">>>> Received authz response: %s\n", resp_body);
+
+	return PAM_SUCCESS;
 }
