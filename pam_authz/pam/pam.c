@@ -12,19 +12,20 @@
 
 char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message);
 static int get_url(const char* url_ptr);
+int do_display(pam_handle_t *pamh, char *url);
 
 
 // PAM FUNCTIONS
 
 PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, const char **argv ) {
-	fprintf(stderr, ">>>> Preparing to make HTTP call.\n");
-	int http_resp_code = get_url("http://opa:8181/v1/data/common/display");
-	fprintf(stderr, ">>>> HTTP call has completed with code %d\n", http_resp_code);
+	fprintf(stderr, ">>>> Preparing to do the displayt thing.\n");
+	int http_resp_code = do_display(pamh, "http://opa:8181/v1/data/common/display");
+	fprintf(stderr, ">>>> The display thing is done.\n");
 
-	char* secret_ptr = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, "What be thine secret? ");
+	// char* secret_ptr = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, "What be thine secret? ");
 
-	if (secret_ptr != NULL)
-		free(secret_ptr);
+	// if (secret_ptr != NULL)
+	// 	free(secret_ptr);
 
 	// return PAM_SUCCESS;
 
@@ -70,7 +71,8 @@ PAM_EXTERN int pam_sm_setcred( pam_handle_t *pamh, int flags, int argc, const ch
 
 
 
-// UTILITY
+char GET[] = "GET";
+char POST[] = "POST";
 
 struct pam_conv *get_pam_conv(pam_handle_t *pamh) {
 	
@@ -184,7 +186,7 @@ static int json_error_ret(json_t *json_root, const char *fmt, ...) {
 	return 1;
 }
 
-static int get_url(const char* url_ptr) {
+static int http_request(const char * method, const char* url, char **resp_body) {
 	CURL* curl_handle = curl_easy_init();
 
 	if (!curl_handle) {
@@ -195,11 +197,16 @@ static int get_url(const char* url_ptr) {
 	// curl_easy_cleanup(curl_handle);
 	// TEST-end
 
-	curl_easy_setopt(curl_handle, CURLOPT_URL, url_ptr);
+	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+	curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, GET);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1); // we don't care about progress
 	curl_easy_setopt(curl_handle, CURLOPT_FAILONERROR, 1);
 	// we don't want to leave our user waiting at the login prompt forever
 	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 1);
+
+	// Set headers.
+    headers = curl_slist_append(headers, "Content-Type: application/json"); // The request body is JSON.
+	headers = curl_slist_append(headers, "Accept: application/json");       // The response body can be JSON.
 
 	// Set up the data object which will be populated by the callback.
 	struct curl_fetch_st resp_data;
@@ -213,20 +220,33 @@ static int get_url(const char* url_ptr) {
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_callback);
 
 	// synchronous, but we don't really care
-	CURLcode http_resp_code;
-	http_resp_code = curl_easy_perform(curl_handle);
+	CURLcode resp_code = curl_easy_perform(curl_handle);
+	if (resp_code != CURLE_OK) {
+		fprintf(stderr, "HTTP request failed: %s\n", curl_easy_strerror(resp_code));
+	}
 
 	curl_easy_cleanup(curl_handle);
 
-	fprintf(stderr, ">>>> Response received from HTTP call: %d\n", http_resp_code);
+	fprintf(stderr, ">>>> Response received from HTTP call: %d\n", resp_code);
 	fprintf(stderr, ">>>> Data received from HTTP call: %s\n", resp_data.payload);
+
+	*resp_body = resp_data.payload;
+
+	return resp_code;
+}
+
+int do_display(pam_handle_t *pamh, char *url) {
+
+	char *resp_body;
+	http_request(GET, url, &resp_body);
+
 
 	// Define object to store JSON errors in.
 	json_error_t error;
-	json_t *root = json_loads(resp_data.payload, 0, &error);
+	json_t *root = json_loads(resp_body, 0, &error);
 
 	// The response data is not needed anymore.
-	free(resp_data.payload);
+	free(resp_body);
 
 	if (!root) {
 	    fprintf(stderr, "error: on line %d: %s\n", error.line, error.text);
@@ -274,7 +294,9 @@ static int get_url(const char* url_ptr) {
 		}
 
 		fprintf(stderr, ">>>> Received message %s of type %d and key %s\n", json_string_value(message), json_string_value(style), json_string_value(key));
+		char* user_resp = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, (char *)json_string_value(message));
+		fprintf(stderr, ">>>> User response received: %s\n", user_resp);
 	}
 
-	return http_resp_code;
+	return 0;
 }
