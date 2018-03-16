@@ -1,10 +1,19 @@
 FROM golang:1.8
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends \
     libpam0g-dev \
     apt-utils \
     libcurl4-gnutls-dev && \
     rm -rf /var/lib/apt/lists/*
+
+RUN wget http://www.digip.org/jansson/releases/jansson-2.11.tar.gz && \
+	tar -xvf jansson-2.11.tar.gz && \
+	cd jansson-2.11 && \
+	./configure --prefix=/usr && \
+	make && \
+	make check && \
+	make install
 
 COPY pam /pam
 COPY docker/run.dockerfile /run.dockerfile

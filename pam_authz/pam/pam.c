@@ -8,6 +8,8 @@
 #include <curl/curl.h>
 
 
+#include <jansson.h>
+
 char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message);
 static int get_url(const char* url_ptr);
 
@@ -15,16 +17,16 @@ static int get_url(const char* url_ptr);
 // PAM FUNCTIONS
 
 PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, const char **argv ) {
+	fprintf(stderr, ">>>> Preparing to make HTTP call.\n");
+	int http_resp_code = get_url("http://opa:8181/v1/data/common/display");
+	fprintf(stderr, ">>>> HTTP call has completed with code %d\n", http_resp_code);
+
 	char* secret_ptr = call_pam_conv(pamh, PAM_PROMPT_ECHO_ON, "What be thine secret? ");
 
 	if (secret_ptr != NULL)
 		free(secret_ptr);
 
 	// return PAM_SUCCESS;
-
-	fprintf(stderr, ">>>> Preparing to make HTTP call.");
-	int http_resp_code = get_url("http://opa:8181");
-	fprintf(stderr, ">>>> HTTP call has completed with code %d", http_resp_code);
 
 	return PAM_SUCCESS;
 }
@@ -132,9 +134,57 @@ char *call_pam_conv(pam_handle_t *pamh, int msg_style, char *message) {
 	return resp;
 }
 
-static int get_url(const char* url_ptr) {
-	// fprintf(stderr, "Start stuff\n");
+/* holder for curl fetch */
+struct curl_fetch_st {
+    char *payload;
+    size_t size;
+};
 
+/* callback for curl fetch */
+size_t curl_callback (void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;                             /* calculate buffer size */
+    struct curl_fetch_st *p = (struct curl_fetch_st *) userp;   /* cast pointer to fetch struct */
+
+    /* expand buffer */
+    p->payload = (char *) realloc(p->payload, p->size + realsize + 1);
+
+    /* check buffer */
+    if (p->payload == NULL) {
+      /* this isn't good */
+      fprintf(stderr, "ERROR: Failed to expand buffer in curl_callback");
+      /* free buffer */
+      free(p->payload);
+      /* return */
+      return -1;
+    }
+
+    /* copy contents to buffer */
+    memcpy(&(p->payload[p->size]), contents, realsize);
+
+    /* set new buffer size */
+    p->size += realsize;
+
+    /* ensure null termination */
+    p->payload[p->size] = 0;
+
+    /* return size */
+    return realsize;
+}
+
+static int json_error_ret(json_t *json_root, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    // Publish to standard error.
+    vfprintf(stderr, fmt, args);
+
+    // Close the root JSON object.
+	json_decref(json_root);
+
+	return 1;
+}
+
+static int get_url(const char* url_ptr) {
 	CURL* curl_handle = curl_easy_init();
 
 	if (!curl_handle) {
@@ -151,13 +201,80 @@ static int get_url(const char* url_ptr) {
 	// we don't want to leave our user waiting at the login prompt forever
 	curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 1);
 
+	// Set up the data object which will be populated by the callback.
+	struct curl_fetch_st resp_data;
+	resp_data.payload = (char *) malloc(1);
+	resp_data.size = 0;
+
+	// Tell the handle to use the data object.
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&resp_data);
+
+	// Tell the handle to use our callback.
+	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, curl_callback);
+
 	// synchronous, but we don't really care
-	int http_resp_code = -1;
+	CURLcode http_resp_code;
 	http_resp_code = curl_easy_perform(curl_handle);
 
 	curl_easy_cleanup(curl_handle);
 
 	fprintf(stderr, ">>>> Response received from HTTP call: %d\n", http_resp_code);
+	fprintf(stderr, ">>>> Data received from HTTP call: %s\n", resp_data.payload);
+
+	// Define object to store JSON errors in.
+	json_error_t error;
+	json_t *root = json_loads(resp_data.payload, 0, &error);
+
+	// The response data is not needed anymore.
+	free(resp_data.payload);
+
+	if (!root) {
+	    fprintf(stderr, "error: on line %d: %s\n", error.line, error.text);
+	    return 1;
+	}
+
+	if (!json_is_object(root)) {
+		return json_error_ret(root, "top level value of JSON response recieved is not type object");
+	}
+
+	json_t *result = json_object_get(root, "result");
+	if (!json_is_object(result)) {
+		return json_error_ret(root, "value of field 'result' does not have type object in JSON response");
+	}
+
+	json_t *display_spec = json_object_get(result, "display_spec");
+	if (!json_is_array(display_spec)) {
+		return json_error_ret(root, "value of field 'display_spec' does not have type array in JSON response");
+	}
+
+	int i;
+	for (i = 0; i < json_array_size(display_spec); i++) {
+		json_t *display_spec_elem, *message, *style, *key;
+
+		display_spec_elem = json_array_get(display_spec, i);
+		if (!json_is_object(display_spec_elem)) {
+			return json_error_ret(root, "value of %dth element in 'display_spec' does not have type object in JSON response", i);
+		}
+
+		message = json_object_get(display_spec_elem, "message");
+		if (!json_is_string(message)) {
+			return json_error_ret(root, "value of 'message' in %dth element of 'display_spec' does not have type string in JSON response", i);
+		}
+
+		style = json_object_get(display_spec_elem, "style");
+		if (!json_is_string(style)) {
+			return json_error_ret(root, "value of 'style' in %dth element of 'display_spec' does not have type string in JSON response", i);
+		}
+
+		if (strcmp(json_string_value(style), "prompt_echo_on") == 0 || strcmp(json_string_value(style), "prompt_echo_off") == 0) {
+			key = json_object_get(display_spec_elem, "key");
+			if (!json_is_string(key)) {
+				return json_error_ret(root, "value of 'key' in %dth element of 'display_spec' does not have type string in JSON response", i);
+			}
+		}
+
+		fprintf(stderr, ">>>> Received message %s of type %d and key %s\n", json_string_value(message), json_string_value(style), json_string_value(key));
+	}
 
 	return http_resp_code;
 }

@@ -12,9 +12,21 @@ RUN rm -f /etc/service/sshd/down
 RUN /etc/my_init.d/00_regen_ssh_host_keys.sh
 
 RUN apt-get update && apt-get install -y \
-    vim \
-    sudo && \
-    rm -rf /var/lib/apt/lists/*
+	vim \
+	wget \
+	gcc \
+	make \
+	sudo && \
+	rm -rf /var/lib/apt/lists/*
+
+RUN wget http://www.digip.org/jansson/releases/jansson-2.11.tar.gz && \
+	tar -xvf jansson-2.11.tar.gz && \
+	cd jansson-2.11 && \
+	./configure --prefix=/usr && \
+	make && \
+	make check && \
+	make install
+
 
 # Do not cache sudo authorization (that is, check the PAM auth stack every invocation)
 RUN sed -i 's/env_reset/env_reset,timestamp_timeout=0/g' /etc/sudoers
